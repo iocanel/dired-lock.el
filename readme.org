@@ -1,0 +1,19 @@
+* Emacs Plugin Template
+
+[[../../actions/workflows/build.yml/badge.svg]]
+
+  This is a simple template that can be used as a starting point for Emacs plugins.
+
+  The plugin follows the guidelines outlined in [[https://emacs-eask.github.io/][Eask]].
+  
+** Building
+
+   #+begin_src sh
+     make compile
+   #+end_src
+
+** Testing
+
+   #+begin_src sh
+     make test
+   #+end_src

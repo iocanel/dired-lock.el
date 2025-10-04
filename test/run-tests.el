@@ -28,7 +28,8 @@
    (should-not (eq default-directory root-test-path))
    (should-not (eq default-directory root-code-path))))
 
-(load "test/test-plugin.el")
+(add-to-list 'load-path root-code-path)
+(load "test/test-dired-lock.el")
 
 (provide 'run-tests)
 ;;; run-tests.el ends here

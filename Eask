@@ -1,16 +1,15 @@
-(package "emacs-eask-plugin-template"
+(package "dired-lock"
          "1.0.0"
-         "Emacs plugin template powered by Eask")
+         "A simple plugin to lock/unlock archives or pdf files in dired mode")
 
-(website-url "https://github.com/iotemplates/emacs-eask-plugin-template")
-(keywords "plugin")
+(website-url "https://github.com/iocanel/dired-lock")
+(keywords "dired" "lock" "unlock" "archive" "pdf")
 
-(package-file "emacs-eask-plugin-template.el")
+(package-file "dired-lock.el")
 
 (script "test" "echo \"Error: no test specified\" && exit 1")
 
 (source "gnu")
 (source "melpa")
 
-(depends-on "f" "0.20.0")
 (depends-on "emacs" "26.1")

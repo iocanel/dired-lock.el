@@ -1,19 +1,18 @@
-* Emacs Plugin Template
+* Dired Lock
 
 [[../../actions/workflows/build.yml/badge.svg]]
 
-  This is a simple template that can be used as a starting point for Emacs plugins.
-
-  The plugin follows the guidelines outlined in [[https://emacs-eask.github.io/][Eask]].
+A simple plugin to lock / unlock archives or pdf files in dired mode.
   
-** Building
+** Locking
 
-   #+begin_src sh
-     make compile
-   #+end_src
+ `(dired-lock-lock)` to lock the selected files.
 
-** Testing
+ - If the file is a directory, it replaces the directory with a locked zip (after prompting for a password).
+ - If the file is a pdf, it replaces the pdf with a locked pdf (after prompting for a password).
 
-   #+begin_src sh
-     make test
-   #+end_src
+** Unlocking
+
+ - `(dired-lock-unlock)` to unlock the selected files.
+  - If the file is a locked zip, it replaces the locked zip with a directory (after prompting for a password).
+  - If the file is a locked pdf, it replaces the locked pdf with a pdf (after prompting for a password).

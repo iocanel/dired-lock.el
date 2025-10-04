@@ -1,6 +1,6 @@
 (package "dired-lock"
          "1.0.0"
-         "A simple plugin to lock/unlock archives or pdf files in dired mode")
+         "Lock/unlock archives or pdf files in dired mode")
 
 (website-url "https://github.com/iocanel/dired-lock")
 (keywords "dired" "lock" "unlock" "archive" "pdf")

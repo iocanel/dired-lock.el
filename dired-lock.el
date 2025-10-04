@@ -60,7 +60,7 @@
   :type 'string
   :group 'dired-lock)
 
-(defcustom dired-lock-pdf-lock-command "qpdf --encrypt %p %p 40 -- %i %o"
+(defcustom dired-lock-pdf-lock-command "qpdf --encrypt %p %p 256 -- %i %o"
   "Command pattern to lock PDF files.
 %p = password, %i = input (PDF file), %o = output (locked PDF file)."
   :type 'string
@@ -96,7 +96,7 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
   "Lock DIRECTORY with PASSWORD by creating a password-protected zip."
   (let* ((dir-name (file-name-nondirectory (directory-file-name directory)))
          (zip-file (concat directory ".zip"))
-         (default-directory (file-name-directory directory)))
+         (default-directory (or (file-name-directory directory) ".")))
     (when (file-exists-p zip-file)
       (error "Zip file %s already exists" zip-file))
     (let* ((command (dired-lock--substitute-command 

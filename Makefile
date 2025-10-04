@@ -46,7 +46,7 @@ compile:
 # See https://emacs-eask.github.io/Getting-Started/Commands-and-options/#-linter
 test:
 	@echo "Testing..."
-	$(EASK) install-deps --dev
+	$(EASK) install-deps --dev || true
 	$(EASK) test ert ./test/run-tests.el
 
 # Run checkdoc

@@ -1,0 +1,2 @@
+This is file 1 content.
+Sample text for testing directory locking.

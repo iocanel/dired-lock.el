@@ -3,16 +3,124 @@
 [[../../actions/workflows/build.yml/badge.svg]]
 
 A simple plugin to lock / unlock archives or pdf files in dired mode.
-  
-** Locking
+
+** Installation
+
+This package is not yet published on MELPA or other package repositories. You can install it using package managers like ~elpaca~, ~straight~, or ~use-package~ with ~:ensure nil~.
+
+*** Using elpaca
+
+#+begin_src emacs-lisp
+(use-package dired-lock
+  :elpaca (dired-lock :host github :repo "iocanel/dired-lock")
+  :commands (dired-lock-lock dired-lock-unlock))
+#+end_src
+
+*** Using straight
+
+#+begin_src emacs-lisp
+(use-package dired-lock
+  :straight (dired-lock :type git :host github :repo "iocanel/dired-lock")
+  :commands (dired-lock-lock dired-lock-unlock))
+#+end_src
+
+*** Manual installation
+
+1. Clone the repository:
+   #+begin_src bash
+   git clone https://github.com/iocanel/dired-lock.git
+   #+end_src
+
+2. Add to your Emacs configuration:
+   #+begin_src emacs-lisp
+   (add-to-list 'load-path "/path/to/dired-lock")
+   (require 'dired-lock)
+   #+end_src
+
+** Usage
+
+*** Locking
 
  `(dired-lock-lock)` to lock the selected files.
 
  - If the file is a directory, it replaces the directory with a locked zip (after prompting for a password).
  - If the file is a pdf, it replaces the pdf with a locked pdf (after prompting for a password).
 
-** Unlocking
+*** Unlocking
 
  - `(dired-lock-unlock)` to unlock the selected files.
   - If the file is a locked zip, it replaces the locked zip with a directory (after prompting for a password).
   - If the file is a locked pdf, it replaces the locked pdf with a pdf (after prompting for a password).
+
+** Configuration
+
+*** Customization Options
+
+The package provides several customization options:
+
+- ~dired-lock-replace-original~ (default: ~t~): Whether to replace the original file/directory with the locked/unlocked version. If ~nil~, creates new files with ~-locked~/~-unlocked~ suffixes.
+
+- ~dired-lock-revert-buffer~ (default: ~t~): Whether to automatically revert the dired buffer after locking/unlocking operations to show changes.
+
+- ~dired-lock-focus-output-file~ (default: ~t~): Whether to move the cursor to the output file after locking/unlocking operations.
+
+- ~dired-lock-zip-lock-command~ (default: ~"zip -r -P %p %o %i"~): Command pattern to create password-protected zip archives.
+
+- ~dired-lock-zip-unlock-command~ (default: ~"unzip -o -P %p %i"~): Command pattern to extract password-protected zip archives.
+
+- ~dired-lock-pdf-lock-command~ (default: ~"qpdf --encrypt %p %p 256 -- %i %o"~): Command pattern to lock PDF files.
+
+- ~dired-lock-pdf-unlock-command~ (default: ~"qpdf --decrypt --password=%p %i %o"~): Command pattern to unlock PDF files.
+
+*** Example Configuration
+
+#+begin_src emacs-lisp
+(use-package dired-lock
+  :elpaca (dired-lock :host github :repo "iocanel/dired-lock")
+  :commands (dired-lock-lock dired-lock-unlock)
+  :custom
+  (dired-lock-replace-original nil)  ; Keep original files
+  (dired-lock-revert-buffer t)       ; Auto-refresh dired buffer
+  (dired-lock-focus-output-file t))  ; Move cursor to output file
+#+end_src
+
+*** Key Bindings
+
+The package doesn't set any key bindings by default. You can add your own key bindings in dired mode:
+
+#+begin_src emacs-lisp
+;; Option 1: Using use-package :bind
+(use-package dired-lock
+  :elpaca (dired-lock :host github :repo "iocanel/dired-lock")
+  :commands (dired-lock-lock dired-lock-unlock)
+  :bind (:map dired-mode-map
+         ("C-c l" . dired-lock-lock)
+         ("C-c u" . dired-lock-unlock)))
+#+end_src
+
+#+begin_src emacs-lisp
+;; Option 2: Using define-key
+(with-eval-after-load 'dired
+  (define-key dired-mode-map (kbd "C-c l") 'dired-lock-lock)
+  (define-key dired-mode-map (kbd "C-c u") 'dired-lock-unlock))
+#+end_src
+
+#+begin_src emacs-lisp
+;; Option 3: Using general.el (if you use it)
+(general-define-key
+ :states 'normal
+ :keymaps 'dired-mode-map
+ "gl" 'dired-lock-lock
+ "gu" 'dired-lock-unlock)
+#+end_src
+
+Suggested key bindings:
+- ~C-c l~ for locking files/directories
+- ~C-c u~ for unlocking files/directories
+- ~gl~ and ~gu~ for evil/vim users
+
+** Requirements
+
+- Emacs 27.1 or newer
+- ~zip~ and ~unzip~ commands for directory locking/unlocking
+- ~qpdf~ command for PDF locking/unlocking

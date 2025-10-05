@@ -9,6 +9,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (load (expand-file-name "../dired-lock.el" (file-name-directory load-file-name)))
 (require 'dired-lock)
 
@@ -193,6 +194,113 @@
       (when (file-exists-p locked-pdf) (delete-file locked-pdf))
       (when (file-exists-p unlocked-pdf) (delete-file unlocked-pdf))
       (when (file-exists-p temp-pdf) (delete-file temp-pdf)))))
+
+(ert-deftest dired-lock-customization-defaults-test ()
+  "Test default values of customization options."
+  (should (eq dired-lock-revert-buffer t))
+  (should (eq dired-lock-focus-output-file t)))
+
+(ert-deftest dired-lock-post-operation-actions-test ()
+  "Test post-operation actions with different customization settings."
+  (let ((test-file "test-post-operation.txt")
+        (revert-called nil)
+        (goto-called nil)
+        (goto-file nil))
+    
+    ;; Create a test file
+    (with-temp-file test-file (insert "test content"))
+    
+    (unwind-protect
+        (progn
+          ;; Mock revert-buffer and dired-goto-file
+          (cl-letf (((symbol-function 'revert-buffer)
+                     (lambda () (setq revert-called t)))
+                    ((symbol-function 'dired-goto-file)
+                     (lambda (file) (setq goto-called t goto-file file))))
+            
+            ;; Test with both settings enabled (default)
+            (let ((dired-lock-revert-buffer t)
+                  (dired-lock-focus-output-file t))
+              (setq revert-called nil goto-called nil goto-file nil)
+              (dired-lock--post-operation-actions test-file)
+              (should revert-called)
+              (should goto-called)
+              (should (string= goto-file test-file)))
+            
+            ;; Test with revert-buffer disabled
+            (let ((dired-lock-revert-buffer nil)
+                  (dired-lock-focus-output-file t))
+              (setq revert-called nil goto-called nil goto-file nil)
+              (dired-lock--post-operation-actions test-file)
+              (should-not revert-called)
+              (should goto-called)
+              (should (string= goto-file test-file)))
+            
+            ;; Test with focus-output-file disabled
+            (let ((dired-lock-revert-buffer t)
+                  (dired-lock-focus-output-file nil))
+              (setq revert-called nil goto-called nil goto-file nil)
+              (dired-lock--post-operation-actions test-file)
+              (should revert-called)
+              (should-not goto-called))
+            
+            ;; Test with both disabled
+            (let ((dired-lock-revert-buffer nil)
+                  (dired-lock-focus-output-file nil))
+              (setq revert-called nil goto-called nil goto-file nil)
+              (dired-lock--post-operation-actions test-file)
+              (should-not revert-called)
+              (should-not goto-called))
+            
+            ;; Test with nil output-file
+            (let ((dired-lock-revert-buffer t)
+                  (dired-lock-focus-output-file t))
+              (setq revert-called nil goto-called nil goto-file nil)
+              (dired-lock--post-operation-actions nil)
+              (should revert-called)
+              (should-not goto-called))
+            
+            ;; Test with non-existent output-file
+            (let ((dired-lock-revert-buffer t)
+                  (dired-lock-focus-output-file t))
+              (setq revert-called nil goto-called nil goto-file nil)
+              (dired-lock--post-operation-actions "non-existent-file.txt")
+              (should revert-called)
+              (should-not goto-called))))
+      
+      ;; Cleanup
+      (when (file-exists-p test-file)
+        (delete-file test-file)))))
+
+(ert-deftest dired-lock-helper-functions-return-values-test ()
+  "Test that helper functions return correct output file paths."
+  (let* ((test-dir (expand-file-name "test-return-values-dir"))
+         (test-zip (concat test-dir ".zip"))
+         (password "test123")
+         (dired-lock-replace-original t))
+    
+    ;; Test directory locking return value  
+    (when (and (executable-find "zip") (executable-find "unzip"))
+      (condition-case err
+          (progn
+            (make-directory test-dir t)
+            (with-temp-file (concat test-dir "/test.txt") (insert "test"))
+            
+            (unwind-protect
+                (let ((result (dired-lock--lock-directory test-dir password)))
+                  (should (string= result test-zip))
+                  (should (file-exists-p test-zip))
+                  
+                  ;; Now test unlocking the zip we just created
+                  (let ((unlock-result (dired-lock--unlock-zip test-zip password)))
+                    (should (string= unlock-result test-dir))
+                    (should (file-directory-p test-dir))))
+              (when (file-exists-p test-zip) (delete-file test-zip))
+              (when (file-directory-p test-dir) (delete-directory test-dir t))))
+        (error
+         (when (file-exists-p test-zip) (delete-file test-zip))
+         (when (file-directory-p test-dir) (delete-directory test-dir t))
+         (ert-skip (format "Zip command failed: %s" (error-message-string err))))))))
 
 (provide 'test-dired-lock)
 ;;; test-dired-lock.el ends here

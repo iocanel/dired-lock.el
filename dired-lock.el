@@ -6,7 +6,7 @@
 ;; Maintainer: Ioannis Canellos <iocanel@gmail.com>
 ;; URL: https://github.com/iocanel/dired-lock
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "26.1"))
+;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: dired lock unlock archive pdf
 
 ;; This file is not part of GNU Emacs.
@@ -42,6 +42,7 @@
 ;;; Code:
 
 (require 'dired)
+(require 'subr-x)
 
 (defgroup dired-lock nil
   "Lock/unlock files and directories in dired mode."
@@ -54,7 +55,7 @@
   :type 'string
   :group 'dired-lock)
 
-(defcustom dired-lock-zip-unlock-command "unzip -P %p %i"
+(defcustom dired-lock-zip-unlock-command "unzip -o -P %p %i"
   "Command pattern to extract password-protected zip archives.
 %p = password, %i = input (zip file)."
   :type 'string
@@ -76,6 +77,20 @@
   "Whether to replace the original file/directory with the locked/unlocked version.
 If t, the original file/directory is replaced.
 If nil, creates a new file/directory with -locked/-unlocked suffix."
+  :type 'boolean
+  :group 'dired-lock)
+
+(defcustom dired-lock-revert-buffer t
+  "Whether to revert the dired buffer after locking/unlocking operations.
+If t, the buffer is reverted to show changes.
+If nil, the buffer is not automatically reverted."
+  :type 'boolean
+  :group 'dired-lock)
+
+(defcustom dired-lock-focus-output-file t
+  "Whether to move cursor to the output file after locking/unlocking operations.
+If t, the cursor is moved to the resulting file.
+If nil, the cursor position is not changed."
   :type 'boolean
   :group 'dired-lock)
 
@@ -140,7 +155,8 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
   (call-process-shell-command command))
 
 (defun dired-lock--lock-directory (directory password)
-  "Lock DIRECTORY with PASSWORD by creating a password-protected zip."
+  "Lock DIRECTORY with PASSWORD by creating a password-protected zip.
+Returns the path to the created zip file."
   (let* ((dir-name (file-name-nondirectory (directory-file-name directory)))
          (zip-file (dired-lock--get-locked-zip-name directory))
          (default-directory (or (file-name-directory directory) ".")))
@@ -155,11 +171,13 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
       (if (zerop exit-code)
           (progn
             (when dired-lock-replace-original
-              (delete-directory directory t)))
+              (delete-directory directory t))
+            zip-file)
         (error "Failed to create locked zip file")))))
 
 (defun dired-lock--unlock-zip (zip-file password)
-  "Unlock ZIP-FILE with PASSWORD by extracting it."
+  "Unlock ZIP-FILE with PASSWORD by extracting it.
+Returns the path to the extracted directory."
   (let* ((target-dir (dired-lock--get-unlocked-directory-name zip-file))
          (extract-dir (file-name-directory zip-file))
          (default-directory extract-dir)
@@ -179,11 +197,13 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
                        (file-exists-p extracted-path))
               (rename-file extracted-path target-dir))
             (when dired-lock-replace-original
-              (delete-file zip-file)))
+              (delete-file zip-file))
+            target-dir)
         (error "Failed to unlock zip file (wrong password?)")))))
 
 (defun dired-lock--lock-pdf (pdf-file password)
-  "Lock PDF-FILE with PASSWORD."
+  "Lock PDF-FILE with PASSWORD.
+Returns the path to the locked PDF file."
   (let* ((base (file-name-sans-extension pdf-file))
          (ext (file-name-extension pdf-file))
          (locked-pdf (concat base "-locked." ext))
@@ -208,14 +228,16 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
             (if dired-lock-replace-original
                 (progn
                   (delete-file pdf-file)
-                  (rename-file locked-pdf pdf-file))
-              nil))
+                  (rename-file locked-pdf pdf-file)
+                  pdf-file)
+              locked-pdf))
         (when (file-exists-p temp-pdf)
           (delete-file temp-pdf))
         (error "Failed to lock PDF file")))))
 
 (defun dired-lock--unlock-pdf (pdf-file password)
-  "Unlock PDF-FILE with PASSWORD."
+  "Unlock PDF-FILE with PASSWORD.
+Returns the path to the unlocked PDF file."
   (let* ((base (file-name-sans-extension pdf-file))
          (ext (file-name-extension pdf-file))
          (unlocked-pdf (if (string-suffix-p "-locked" base)
@@ -242,8 +264,9 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
             (if dired-lock-replace-original
                 (progn
                   (delete-file pdf-file)
-                  (rename-file unlocked-pdf pdf-file))
-              nil))
+                  (rename-file unlocked-pdf pdf-file)
+                  pdf-file)
+              unlocked-pdf))
         (when (file-exists-p temp-pdf)
           (delete-file temp-pdf))
         (error "Failed to unlock PDF file (wrong password?)")))))
@@ -260,6 +283,14 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
        (file-exists-p file)
        (not (file-directory-p file))))
 
+(defun dired-lock--post-operation-actions (output-file)
+  "Perform post-operation actions: revert buffer and focus output file.
+OUTPUT-FILE is the resulting file after lock/unlock operation."
+  (when dired-lock-revert-buffer
+    (revert-buffer))
+  (when (and dired-lock-focus-output-file output-file (file-exists-p output-file))
+    (dired-goto-file output-file)))
+
 ;;;###autoload
 (defun dired-lock-lock ()
   "Lock the selected files in dired mode."
@@ -267,16 +298,20 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
   (let ((files (dired-get-marked-files)))
     (when (null files)
       (error "No files selected"))
-    (let ((password (dired-lock--read-password "Enter password to lock files: ")))
+    (let ((password (dired-lock--read-password "Enter password to lock files: "))
+          (output-files nil))
       (dolist (file files)
-        (cond
-         ((file-directory-p file)
-          (dired-lock--lock-directory file password))
-         ((dired-lock--is-pdf-p file)
-          (dired-lock--lock-pdf file password))
-         (t
-          nil))))
-    (revert-buffer)))
+        (let ((output-file
+               (cond
+                ((file-directory-p file)
+                 (dired-lock--lock-directory file password))
+                ((dired-lock--is-pdf-p file)
+                 (dired-lock--lock-pdf file password))
+                (t
+                 nil))))
+          (when output-file
+            (push output-file output-files))))
+      (dired-lock--post-operation-actions (car output-files)))))
 
 ;;;###autoload
 (defun dired-lock-unlock ()
@@ -285,16 +320,20 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
   (let ((files (dired-get-marked-files)))
     (when (null files)
       (error "No files selected"))
-    (let ((password (dired-lock--read-password "Enter password to unlock files: ")))
+    (let ((password (dired-lock--read-password "Enter password to unlock files: "))
+          (output-files nil))
       (dolist (file files)
-        (cond
-         ((dired-lock--is-locked-zip-p file)
-          (dired-lock--unlock-zip file password))
-         ((dired-lock--is-pdf-p file)
-          (dired-lock--unlock-pdf file password))
-         (t
-          nil))))
-    (revert-buffer)))
+        (let ((output-file
+               (cond
+                ((dired-lock--is-locked-zip-p file)
+                 (dired-lock--unlock-zip file password))
+                ((dired-lock--is-pdf-p file)
+                 (dired-lock--unlock-pdf file password))
+                (t
+                 nil))))
+          (when output-file
+            (push output-file output-files))))
+      (dired-lock--post-operation-actions (car output-files)))))
 
 (provide 'dired-lock)
 ;;; dired-lock.el ends here

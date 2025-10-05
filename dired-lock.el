@@ -72,9 +72,56 @@
   :type 'string
   :group 'dired-lock)
 
+(defcustom dired-lock-replace-original t
+  "Whether to replace the original file/directory with the locked/unlocked version.
+If t, the original file/directory is replaced.
+If nil, creates a new file/directory with -locked/-unlocked suffix."
+  :type 'boolean
+  :group 'dired-lock)
+
 (defun dired-lock--read-password (prompt)
   "Read a password with PROMPT, hiding input."
   (read-passwd prompt))
+
+(defun dired-lock--get-locked-filename (filename)
+  "Get the locked filename for FILENAME based on customization settings."
+  (if dired-lock-replace-original
+      filename
+    (let ((base (file-name-sans-extension filename))
+          (ext (file-name-extension filename)))
+      (if ext
+          (concat base "-locked." ext)
+        (concat filename "-locked")))))
+
+(defun dired-lock--get-unlocked-filename (filename)
+  "Get the unlocked filename for FILENAME based on customization settings."
+  (if dired-lock-replace-original
+      filename
+    (let ((base (file-name-sans-extension filename))
+          (ext (file-name-extension filename)))
+      ;; If the base ends with "-locked", replace it with "-unlocked"
+      (when (string-suffix-p "-locked" base)
+        (setq base (concat (string-remove-suffix "-locked" base) "-unlocked")))
+      (if ext
+          (concat base (if (string-suffix-p "-unlocked" base) "" "-unlocked") "." ext)
+        (concat filename (if (string-suffix-p "-unlocked" filename) "" "-unlocked"))))))
+
+(defun dired-lock--get-locked-zip-name (directory)
+  "Get the zip filename for locking DIRECTORY based on customization settings."
+  (if dired-lock-replace-original
+      (concat directory ".zip")
+    (concat directory "-locked.zip")))
+
+(defun dired-lock--get-unlocked-directory-name (zip-file)
+  "Get the directory name for unlocking ZIP-FILE based on customization settings."
+  (let ((base (file-name-sans-extension zip-file)))
+    (if dired-lock-replace-original
+        (if (string-suffix-p "-locked" base)
+            (string-remove-suffix "-locked" base)
+          base)
+      (if (string-suffix-p "-locked" base)
+          (concat (string-remove-suffix "-locked" base) "-unlocked")
+        (concat base "-unlocked")))))
 
 (defun dired-lock--substitute-command (command-pattern &rest substitutions)
   "Substitute placeholders in COMMAND-PATTERN with SUBSTITUTIONS.
@@ -95,7 +142,7 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
 (defun dired-lock--lock-directory (directory password)
   "Lock DIRECTORY with PASSWORD by creating a password-protected zip."
   (let* ((dir-name (file-name-nondirectory (directory-file-name directory)))
-         (zip-file (concat directory ".zip"))
+         (zip-file (dired-lock--get-locked-zip-name directory))
          (default-directory (or (file-name-directory directory) ".")))
     (when (file-exists-p zip-file)
       (error "Zip file %s already exists" zip-file))
@@ -107,33 +154,46 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
            (exit-code (dired-lock--execute-command command)))
       (if (zerop exit-code)
           (progn
-            (delete-directory directory t)
-            (message "Directory %s locked as %s" directory zip-file))
+            (when dired-lock-replace-original
+              (delete-directory directory t)))
         (error "Failed to create locked zip file")))))
 
 (defun dired-lock--unlock-zip (zip-file password)
   "Unlock ZIP-FILE with PASSWORD by extracting it."
-  (let* ((dir-name (file-name-sans-extension (file-name-nondirectory zip-file)))
+  (let* ((target-dir (dired-lock--get-unlocked-directory-name zip-file))
          (extract-dir (file-name-directory zip-file))
-         (default-directory extract-dir))
-    (when (file-exists-p (concat extract-dir dir-name))
-      (error "Directory %s already exists" (concat extract-dir dir-name)))
+         (default-directory extract-dir)
+         (zip-basename (file-name-nondirectory zip-file)))
+    (when (file-exists-p target-dir)
+      (error "Directory %s already exists" target-dir))
     (let* ((command (dired-lock--substitute-command 
                      dired-lock-zip-unlock-command
                      :password (shell-quote-argument password)
-                     :input (shell-quote-argument (file-name-nondirectory zip-file))))
+                     :input (shell-quote-argument zip-basename)))
            (exit-code (dired-lock--execute-command command)))
       (if (zerop exit-code)
-          (progn
-            (delete-file zip-file)
-            (message "Zip file %s unlocked to %s" zip-file (concat extract-dir dir-name)))
+          (let* ((extracted-name (file-name-sans-extension zip-basename))
+                 (extracted-path (concat extract-dir extracted-name)))
+            ;; Rename extracted directory to target name if different
+            (when (and (not (string= extracted-name (file-name-nondirectory target-dir)))
+                       (file-exists-p extracted-path))
+              (rename-file extracted-path target-dir))
+            (when dired-lock-replace-original
+              (delete-file zip-file)))
         (error "Failed to unlock zip file (wrong password?)")))))
 
 (defun dired-lock--lock-pdf (pdf-file password)
   "Lock PDF-FILE with PASSWORD."
-  (let ((temp-pdf (concat (file-name-sans-extension pdf-file) "-temp.pdf")))
+  (let* ((base (file-name-sans-extension pdf-file))
+         (ext (file-name-extension pdf-file))
+         (locked-pdf (concat base "-locked." ext))
+         (temp-pdf (concat base "-temp.pdf")))
+    
+    (when (file-exists-p locked-pdf)
+      (error "Locked PDF %s already exists" locked-pdf))
     (when (file-exists-p temp-pdf)
       (error "Temporary PDF %s already exists" temp-pdf))
+      
     (let* ((command (dired-lock--substitute-command 
                      dired-lock-pdf-lock-command
                      :password (shell-quote-argument password)
@@ -142,18 +202,32 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
            (exit-code (dired-lock--execute-command command)))
       (if (zerop exit-code)
           (progn
-            (delete-file pdf-file)
-            (rename-file temp-pdf pdf-file)
-            (message "PDF %s locked" pdf-file))
+            (rename-file temp-pdf locked-pdf)
+            
+            ;; Handle replacement logic
+            (if dired-lock-replace-original
+                (progn
+                  (delete-file pdf-file)
+                  (rename-file locked-pdf pdf-file))
+              nil))
         (when (file-exists-p temp-pdf)
           (delete-file temp-pdf))
         (error "Failed to lock PDF file")))))
 
 (defun dired-lock--unlock-pdf (pdf-file password)
   "Unlock PDF-FILE with PASSWORD."
-  (let ((temp-pdf (concat (file-name-sans-extension pdf-file) "-temp.pdf")))
+  (let* ((base (file-name-sans-extension pdf-file))
+         (ext (file-name-extension pdf-file))
+         (unlocked-pdf (if (string-suffix-p "-locked" base)
+                           (concat (string-remove-suffix "-locked" base) "-unlocked." ext)
+                         (concat base "-unlocked." ext)))
+         (temp-pdf (concat base "-temp.pdf")))
+    
+    (when (file-exists-p unlocked-pdf)
+      (error "Unlocked PDF %s already exists" unlocked-pdf))
     (when (file-exists-p temp-pdf)
       (error "Temporary PDF %s already exists" temp-pdf))
+      
     (let* ((command (dired-lock--substitute-command 
                      dired-lock-pdf-unlock-command
                      :password (shell-quote-argument password)
@@ -162,9 +236,14 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
            (exit-code (dired-lock--execute-command command)))
       (if (zerop exit-code)
           (progn
-            (delete-file pdf-file)
-            (rename-file temp-pdf pdf-file)
-            (message "PDF %s unlocked" pdf-file))
+            (rename-file temp-pdf unlocked-pdf)
+            
+            ;; Handle replacement logic
+            (if dired-lock-replace-original
+                (progn
+                  (delete-file pdf-file)
+                  (rename-file unlocked-pdf pdf-file))
+              nil))
         (when (file-exists-p temp-pdf)
           (delete-file temp-pdf))
         (error "Failed to unlock PDF file (wrong password?)")))))
@@ -196,7 +275,7 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
          ((dired-lock--is-pdf-p file)
           (dired-lock--lock-pdf file password))
          (t
-          (message "Skipping %s (not a directory or PDF)" file)))))
+          nil))))
     (revert-buffer)))
 
 ;;;###autoload
@@ -214,7 +293,7 @@ SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
          ((dired-lock--is-pdf-p file)
           (dired-lock--unlock-pdf file password))
          (t
-          (message "Skipping %s (not a locked zip or PDF)" file)))))
+          nil))))
     (revert-buffer)))
 
 (provide 'dired-lock)

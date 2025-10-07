@@ -21,6 +21,29 @@
                                                     :output "archive.zip")
                    "zip -P secret archive.zip dir")))
 
+(ert-deftest dired-lock-substitute-command-backslash-test ()
+  "Test command pattern substitution with backslashes in filenames."
+  ;; Test Greek filename with backslashes (simulating the error case)
+  (should (string= (dired-lock--substitute-command "qpdf --decrypt --password=%p %i %o"
+                                                    :password "09038003191"
+                                                    :input "/home/user/\\Α\\Λ\\Φ\\Α\\ \\Β\\Η\\Τ\\Α\\ \\Γ\\Α\\Μ\\Α.PDF"
+                                                    :output "/home/user/\\Α\\Λ\\Φ\\Α\\ \\Β\\Η\\Τ\\Α\\ \\Γ\\Α\\Μ\\Α-temp.pdf")
+                   "qpdf --decrypt --password=09038003191 /home/user/\\Α\\Λ\\Φ\\Α\\ \\Β\\Η\\Τ\\Α\\ \\Γ\\Α\\Μ\\Α.PDF /home/user/\\Α\\Λ\\Φ\\Α\\ \\Β\\Η\\Τ\\Α\\ \\Γ\\Α\\Μ\\Α-temp.pdf"))
+  ;; Test with various backslash patterns
+  (should (string= (dired-lock--substitute-command "cmd %i"
+                                                    :input "C:\\Program Files\\app\\file.txt")
+                   "cmd C:\\Program Files\\app\\file.txt"))
+  ;; Test with backslash at end
+  (should (string= (dired-lock--substitute-command "cmd %i"
+                                                    :input "path\\with\\trailing\\")
+                   "cmd path\\with\\trailing\\"))
+  ;; Test with mixed patterns
+  (should (string= (dired-lock--substitute-command "tool --input=%i --output=%o --pass=%p"
+                                                    :input "dir\\with\\backslashes"
+                                                    :output "out\\put\\file"
+                                                    :password "pass\\word")
+                   "tool --input=dir\\with\\backslashes --output=out\\put\\file --pass=pass\\word")))
+
 (ert-deftest dired-lock-is-pdf-test ()
   "Test PDF file detection."
   (with-temp-file "test.pdf" (insert "dummy"))

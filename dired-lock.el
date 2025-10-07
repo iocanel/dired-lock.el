@@ -143,11 +143,11 @@ If nil, the cursor position is not changed."
 SUBSTITUTIONS should be a plist with keys like :password, :input, :output."
   (let ((result command-pattern))
     (when-let ((password (plist-get substitutions :password)))
-      (setq result (replace-regexp-in-string "%p" password result)))
+      (setq result (replace-regexp-in-string "%p" password result nil t)))
     (when-let ((input (plist-get substitutions :input)))
-      (setq result (replace-regexp-in-string "%i" input result)))
+      (setq result (replace-regexp-in-string "%i" input result nil t)))
     (when-let ((output (plist-get substitutions :output)))
-      (setq result (replace-regexp-in-string "%o" output result)))
+      (setq result (replace-regexp-in-string "%o" output result nil t)))
     result))
 
 (defun dired-lock--execute-command (command)
